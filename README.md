@@ -47,6 +47,9 @@ document, which is the honest grain size for a plan. See [docs/rfc-map.md](docs/
 | RFC 8092 | Proposed Standard | 2017-02 | the large community attribute, four-octet safe by construction |
 | RFC 7911 | Proposed Standard | 2016-07 | ADD-PATH: a path identifier alongside the prefix |
 | RFC 9234 | Proposed Standard | 2022-05 | roles in OPEN and UPDATE for leak prevention and detection |
+| RFC 6793 | Proposed Standard | 2012-12 | the four-octet AS number space, updating RFC 4271 |
+| RFC 4760 | Draft Standard | 2007-01 | multiprotocol extensions: MP_REACH_NLRI and MP_UNREACH_NLRI |
+| RFC 7606 | Proposed Standard | 2015-08 | revised error handling for UPDATE messages, updating RFC 4271, RFC 4360 and RFC 4760 |
 
 ### Errata watch
 
@@ -77,7 +80,8 @@ document, which is the honest grain size for a plan. See [docs/rfc-map.md](docs/
 ## Install
 
 ```bash
-git clone https://github.com/b1tninja/pathattr.cd pathattr
+git clone https://github.com/b1tninja/pathattr.git
+cd pathattr
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\\Scripts\\Activate.ps1
 pip install -e ".[dev]"

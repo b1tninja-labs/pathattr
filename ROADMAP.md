@@ -11,22 +11,26 @@ behaviour regressed. Reading the code and agreeing with it is not enough. That i
 Legend: `[ok]` implemented and pinned by a named test -- `[part]` partial, with what is
 missing stated -- `[ ]` not implemented -- `[no]` deliberate non-goal.
 
+A Where cell marked `(to be written)` names the test that will pin the row once it exists; no
+such test has been written yet, and the row cannot leave `[ ]` until it has. The Milestone
+column places the row on the ladder in section 2, and `-` means it is not placed yet.
+
 Update the affected row in the same commit that changes the behaviour. A row and its test
 drift apart within one release, and the document becomes useless exactly when it is needed.
 
 ## 1. Obligations
 
-| Obligation | Spec | Status | Where |
-|---|---|---|---|
-| `message.decode()` | RFC 4271 | `[ ]` | `tests/test_obligations.py::decode` |
-| `message.encode()` | RFC 4271 | `[ ]` | `tests/test_obligations.py::encode` |
-| `attribute.decode_attributes()` | RFC 4271 | `[ ]` | `tests/test_obligations.py::decode_attributes` |
-| `aspath.parse_as_path()` | RFC 6793 | `[ ]` | `tests/test_obligations.py::parse_as_path` |
-| `nlri.parse_nlri()` | RFC 7911 | `[ ]` | `tests/test_obligations.py::parse_nlri` |
-| `communities.decode_communities()` | RFC 8092 | `[ ]` | `tests/test_obligations.py::decode_communities` |
-| `communities.decode_extended()` | RFC 4360 | `[ ]` | `tests/test_obligations.py::decode_extended` |
-| `roles.peer_role()` | RFC 9234 | `[ ]` | `tests/test_obligations.py::peer_role` |
-| `limits.check()` | design | `[ ]` | `tests/test_obligations.py::check` |
+| Obligation | Spec | Status | Where | Milestone |
+|---|---|---|---|---|
+| `message.decode()` | RFC 4271 | `[ ]` | `tests/test_obligations.py::test_decode` (to be written) | M1 |
+| `message.encode()` | RFC 4271 | `[ ]` | `tests/test_obligations.py::test_encode` (to be written) | M1 |
+| `attribute.decode_attributes()` | RFC 4271 | `[ ]` | `tests/test_obligations.py::test_decode_attributes` (to be written) | M3 |
+| `aspath.parse_as_path()` | RFC 6793 | `[ ]` | `tests/test_obligations.py::test_parse_as_path` (to be written) | M3 |
+| `nlri.parse_nlri()` | RFC 7911 | `[ ]` | `tests/test_obligations.py::test_parse_nlri` (to be written) | M4 |
+| `communities.decode_communities()` | RFC 8092 | `[ ]` | `tests/test_obligations.py::test_decode_communities` (to be written) | M5 |
+| `communities.decode_extended()` | RFC 4360 | `[ ]` | `tests/test_obligations.py::test_decode_extended` (to be written) | M5 |
+| `roles.peer_role()` | RFC 9234 | `[ ]` | `tests/test_obligations.py::test_peer_role` (to be written) | M2 |
+| `limits.check()` | design | `[ ]` | `tests/test_obligations.py::test_check` (to be written) | M1 |
 
 ## 2. Milestones
 
@@ -56,7 +60,7 @@ the code existing. Coverage in `pyproject.toml` ratchets in the same commit.
 
 ## 5. Open questions
 
-- none recorded yet
+- nlri.parse_nlri is placed on M4 (multiprotocol NLRI) but its Spec cell cites RFC 7911 (ADD-PATH) only: add RFC 4760 to the cell, or split the ADD-PATH handling into its own row
 
 ## 6. Publication checklist
 

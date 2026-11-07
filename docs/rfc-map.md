@@ -7,6 +7,9 @@
 | RFC 8092 | Proposed Standard | 2017-02 | 2026-11-05 |
 | RFC 7911 | Proposed Standard | 2016-07 | 2026-11-05 |
 | RFC 9234 | Proposed Standard | 2022-05 | 2026-11-05 |
+| RFC 6793 | Proposed Standard | 2012-12 | 2026-11-05 |
+| RFC 4760 | Draft Standard | 2007-01 | 2026-11-05 |
+| RFC 7606 | Proposed Standard | 2015-08 | 2026-11-05 |
 
 Citation rules, in the order they most often get broken:
 
