@@ -96,7 +96,7 @@ All four gates must pass, on Linux and Windows alike:
 
 ```bash
 ruff check . && ruff format --check .
-mypy pathattr
+mypy pathattr tests
 pytest -q --cov
 python -O -m pytest -q
 ```
