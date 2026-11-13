@@ -12,7 +12,8 @@ Two halves, both pure functions over values already framed by ``message`` and ``
 
 The procedures apply to AFI 1 and 2 with SAFI 1 only (section 5), see :func:`otc_applies`. Whether
 the operator runs RFC 9234 at all, and the confederation and private-AS cases of section 5, are
-the caller's configuration; this module does not guess them.
+the caller's configuration; this module does not guess them, but :func:`otc_boundary_violation`
+checks the value rule they impose on egress.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ __all__ = [
     "encode_otc",
     "expected_remote_role",
     "otc_applies",
+    "otc_boundary_violation",
     "otc_egress",
     "otc_ingress",
     "peer_role",
@@ -210,3 +212,32 @@ def otc_egress(remote: Role, local_asn: int, otc: int | None) -> OtcEgress:
     if remote in (Role.CUSTOMER, Role.PEER, Role.RS_CLIENT) and otc is None:
         return OtcEgress(True, local_asn)
     return OtcEgress(True, otc)
+
+
+def otc_boundary_violation(
+    otc: int | None,
+    boundary_asn: int,
+    internal_asns: frozenset[int] | set[int] = frozenset(),
+    *,
+    only_boundary: bool = False,
+) -> str | None:
+    """The section 5 rule for an OTC value leaving a confederation or an Internet-facing AS.
+
+    ``boundary_asn`` is the AS Confederation Identifier, or the Internet-facing ASN that has
+    private AS numbers behind it; ``internal_asns`` are the Member-AS numbers or the private ASNs
+    the caller says sit behind it. Section 5 says an UPDATE leaving a confederation "MUST NOT
+    contain an OTC Attribute with a value corresponding to any Member-AS Number other than the
+    AS Confederation Identifier", so a value in ``internal_asns`` other than ``boundary_asn`` is
+    a violation. For private AS numbers it says the value "MUST NOT" be "other than the
+    Internet-facing ASN"; read literally that would also forbid a preserved OTC set by a distant
+    AS, so it is applied only with ``only_boundary=True``. Returns the reason, or None when the
+    value may leave. The caller supplies the AS sets; this module does not know which ASNs are
+    private or which are members.
+    """
+    if otc is None or otc == boundary_asn:
+        return None
+    if only_boundary:
+        return f"OTC {otc} is not the boundary AS {boundary_asn}"
+    if otc in internal_asns:
+        return f"OTC {otc} names an AS behind the boundary AS {boundary_asn}"
+    return None

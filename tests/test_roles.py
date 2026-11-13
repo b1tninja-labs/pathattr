@@ -238,3 +238,46 @@ def test_other_families_are_kept_raw_with_nlri_none_and_round_trip(
     decoded = decode_attributes([RawAttribute(0x80, 14, value)])
     assert decoded.mp_reach is not None and decoded.mp_reach.nlri_raw == nlri_octets
     assert decoded.undecodable == ()
+
+
+# ---- rows roles.otc-confederation-and-private-as and roles.otc-as-zero ----------------------
+
+CONFED_ID = 64500
+MEMBERS = frozenset({65001, 65002})
+
+
+def test_otc_confederation_egress_carries_the_identifier_never_a_member_as():
+    # section 5: an OTC added on egress from the confederation equals the Confederation Identifier
+    added = roles.otc_egress(Role.CUSTOMER, CONFED_ID, None)
+    assert added.otc == CONFED_ID
+    assert roles.otc_boundary_violation(added.otc, CONFED_ID, MEMBERS) is None
+    # a Member-AS number leaving the confederation is the violation the RFC names
+    for member in MEMBERS:
+        assert "behind" in (roles.otc_boundary_violation(member, CONFED_ID, MEMBERS) or "")
+    # a value set by a distant AS is preserved and may leave; no OTC is nothing to check
+    assert roles.otc_boundary_violation(64999, CONFED_ID, MEMBERS) is None
+    assert roles.otc_boundary_violation(None, CONFED_ID, MEMBERS) is None
+
+
+def test_otc_private_as_behind_an_internet_facing_asn():
+    internet, private = 64500, frozenset({4200000001})
+    assert roles.otc_boundary_violation(internet, internet, private) is None
+    assert roles.otc_boundary_violation(4200000001, internet, private) is not None
+    # the literal reading, section 5 "other than the Internet-facing ASN", is opt-in
+    assert roles.otc_boundary_violation(64999, internet, private) is None
+    assert roles.otc_boundary_violation(64999, internet, private, only_boundary=True) is not None
+    assert roles.otc_boundary_violation(internet, internet, private, only_boundary=True) is None
+
+
+def test_otc_as_zero_is_accepted_and_handled_as_any_other_value():
+    # RFC 9234 section 5 is silent on 0 and RFC 9234 has no erratum or update in the library, so
+    # the codec keeps the value; this test pins that decision.
+    assert walk(b"\xc0\x23\x04\x00\x00\x00\x00", four_octet_as=True, internal=False).issues == ()
+    assert decode_attributes([RawAttribute(0xC0, 35, bytes(4))]).otc == 0
+    assert roles.decode_otc(bytes(4)) == 0 and roles.encode_otc(0) == bytes(4)
+    # a Peer's route with OTC 0 is a leak because 0 is not the Peer's AS; from a Provider it stays
+    assert roles.otc_ingress(Role.PEER, 65000, 0).ineligible
+    assert not roles.otc_ingress(Role.PROVIDER, 65000, 0).ineligible
+    # preserved unchanged toward a Customer; never sent up
+    assert roles.otc_egress(Role.CUSTOMER, 65000, 0) == roles.OtcEgress(True, 0)
+    assert not roles.otc_egress(Role.PROVIDER, 65000, 0).advertise
