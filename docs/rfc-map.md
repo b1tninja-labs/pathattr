@@ -10,6 +10,13 @@
 | RFC 6793 | Proposed Standard | 2012-12 | 2026-11-05 |
 | RFC 4760 | Draft Standard | 2007-01 | 2026-11-05 |
 | RFC 7606 | Proposed Standard | 2015-08 | 2026-11-05 |
+| RFC 5492 | Draft Standard, obsoletes RFC 3392, updated by RFC 8810; capabilities in OPEN | 2009-02 | 2026-11-13 |
+| RFC 9072 | Proposed Standard, updates RFC 4271; extended optional parameters length | 2021-07 | 2026-11-13 |
+| RFC 8654 | Proposed Standard, updates RFC 4271; extended messages up to 65,535 octets, not OPEN or KEEPALIVE | 2019-10 | 2026-11-13 |
+| RFC 1997 | Proposed Standard, updated by RFC 7606 and RFC 8642; type code 8 | 1996-08 | 2026-11-13 |
+| RFC 4456 | Draft Standard, updated by RFC 7606; ORIGINATOR_ID 9, CLUSTER_LIST 10 | 2006-04 | 2026-11-13 |
+| RFC 5065 | Draft Standard, updated by RFC 9774; AS_CONFED segment types 3 and 4 | 2007-08 | 2026-11-13 |
+| RFC 6396 | Proposed Standard; Appendix A is the only published UPDATE vector, with errata 5511 and 6640 | 2011-10 | 2026-11-13 |
 
 Citation rules, in the order they most often get broken:
 

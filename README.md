@@ -5,10 +5,14 @@
      the badges stay commented out until the tag exists.
 -->
 
-**Pre-alpha shell.** The package surface, the obligation matrix and the CI gates exist.
-No protocol behaviour is implemented: every public function raises `NotImplementedError`,
-and the test suite records that rather than hiding it. Read
-[ROADMAP.md](ROADMAP.md) before depending on any of it.
+**Pre-alpha.** BGP message framing (OPEN, UPDATE, KEEPALIVE, NOTIFICATION, extended messages and
+extended OPEN parameters), IPv4 prefix lists, and the path attribute walker with RFC 7606 error
+verdicts are implemented and tested. Attribute value decoding, AS_PATH merging, multiprotocol NLRI,
+ADD-PATH, communities and roles still raise `NotImplementedError`. Read [ROADMAP.md](ROADMAP.md)
+before depending on any of it.
+
+Dependencies: Python standard library only (the `cryptography` package would be the only
+permitted exception, for cryptographic primitives, and nothing here needs it).
 
 pathattr -- the BGP wire codec a looking glass is built on
 
