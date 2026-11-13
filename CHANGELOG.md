@@ -13,6 +13,12 @@ The format follows Keep a Changelog, and this project adheres to Semantic Versio
   attribute-name extract (`registry`).
 - `walk` now applies RFC 7607 (AS 0), RFC 6793 section 6 (AS4_PATH and AS4_AGGREGATOR) and RFC 8092
   section 6 (LARGE_COMMUNITY).
+- RFC 9234: the BGP Role capability (`roles.peer_role`, `role_from_open`, `check_roles`), Role
+  Mismatch (`OpenSubcode.ROLE_MISMATCH`), the OTC attribute (`Attributes.otc`, judged by `walk`)
+  and the ingress and egress procedures (`roles.otc_ingress`, `roles.otc_egress`).
+- RFC 5701: attribute 25 decoded (`communities.decode_ipv6_extended`,
+  `Attributes.ipv6_extended_communities`) and judged by `walk` under RFC 7606 section 7.15.
+- Tests pinning that VPN, labeled, EVPN, flowspec and BGP-LS NLRI are kept raw.
 
 ### Changed
 

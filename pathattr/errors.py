@@ -52,6 +52,7 @@ class OpenSubcode(IntEnum):
     BAD_BGP_IDENTIFIER = 3
     UNSUPPORTED_OPTIONAL_PARAMETER = 4
     UNACCEPTABLE_HOLD_TIME = 6
+    ROLE_MISMATCH = 11  # RFC 9234 section 7; 8 to 10 are deprecated
 
 
 class UpdateSubcode(IntEnum):

@@ -537,8 +537,12 @@ def test_measure_counts_framed_discarded_and_decoded_items():
 
 def test_attr_type_names_agree_with_the_iana_extract():
     for member in AttrType:
-        iana = registry.ATTRIBUTE_NAMES[int(member)].replace(" ", "_").upper()
-        assert member.name == iana, member
+        name = registry.ATTRIBUTE_NAMES[int(member)]
+        iana = name.replace(" ", "_").upper()
+        # a member name cannot hold parentheses: IANA's "Only to Customer (OTC)" is matched by
+        # its abbreviation
+        short = name[name.rindex("(") + 1 : -1] if name.endswith(")") else iana
+        assert member.name in (iana, short), member
     assert registry.attribute_name(35) == "Only to Customer (OTC)"
     assert registry.attribute_name(0) == "reserved" and registry.attribute_name(99) == "unassigned"
     assert registry.IANA_UPDATED == "2026-09-09"

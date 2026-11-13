@@ -23,6 +23,7 @@
 | RFC 8950 | Proposed Standard, obsoletes RFC 5549; IPv6 next hop for IPv4 NLRI (section 3) | 2020-11 | 2026-11-13 |
 | RFC 7607 | Proposed Standard; AS 0 (section 2: malformed in AS_PATH and AGGREGATOR by RFC 7606, in AS4_* by RFC 6793) | 2015-08 | 2026-11-13 |
 | RFC 7153 | Proposed Standard; extended community Type and Sub-Type registries (section 2) | 2014-03 | 2026-11-13 |
+| RFC 5701 | Proposed Standard; IPv6 Address Specific Extended Community, attribute 25, 20-octet entries (sections 2 and 3); no errata (rfclib, 2026-11-13); length rule revised by RFC 7606 section 7.15 | 2009-11 | 2026-11-13 |
 | RFC 9774 | Proposed Standard, obsoletes RFC 6472, updates RFC 4271 and RFC 5065; AS_SET and AS_CONFED_SET (section 3) | 2025-05 | 2026-11-13 |
 | IANA bgp-parameters | "BGP Path Attributes" registry, `updated` 2026-09-09; extract in `pathattr/registry.py` | - | 2026-11-13 |
 | IANA bgp-well-known-communities | `updated` 2026-09-22; extract in `pathattr/communities.py` | - | 2026-11-13 |

@@ -9,7 +9,8 @@ library does not know survives a round trip.
 
 The attribute-specific checks are those of RFC 7606 section 7 (ORIGIN, AS_PATH, NEXT_HOP,
 MULTI_EXIT_DISC, LOCAL_PREF, ATOMIC_AGGREGATE, AGGREGATOR, COMMUNITIES, ORIGINATOR_ID,
-CLUSTER_LIST, MP_REACH_NLRI, MP_UNREACH_NLRI, EXTENDED COMMUNITIES). Anything else is framed and
+CLUSTER_LIST, MP_REACH_NLRI, MP_UNREACH_NLRI, EXTENDED COMMUNITIES, IPv6 EXTENDED COMMUNITIES,
+and OTC from RFC 9234 section 5). Anything else is framed and
 kept, never judged.
 """
 
@@ -32,9 +33,11 @@ from .aspath import (
 from .communities import (
     Community,
     ExtendedCommunity,
+    Ipv6ExtendedCommunity,
     LargeCommunity,
     decode_communities,
     decode_extended,
+    decode_ipv6_extended,
     decode_large_communities,
 )
 from .errors import BgpError
@@ -80,7 +83,9 @@ class AttrType(IntEnum):
     EXTENDED_COMMUNITIES = 16  # RFC 4360 section 2
     AS4_PATH = 17  # RFC 6793 section 3
     AS4_AGGREGATOR = 18
+    IPV6_ADDRESS_SPECIFIC_EXTENDED_COMMUNITY = 25  # RFC 5701 section 3
     LARGE_COMMUNITY = 32  # RFC 8092 section 3
+    OTC = 35  # RFC 9234 section 5
 
 
 class Action(IntEnum):
@@ -112,7 +117,9 @@ _FLAGS: dict[int, tuple[bool, bool]] = {
     AttrType.MP_REACH_NLRI: (True, False),
     AttrType.MP_UNREACH_NLRI: (True, False),
     AttrType.EXTENDED_COMMUNITIES: (True, True),
+    AttrType.IPV6_ADDRESS_SPECIFIC_EXTENDED_COMMUNITY: (True, True),  # RFC 5701 section 2
     AttrType.LARGE_COMMUNITY: (True, True),
+    AttrType.OTC: (True, True),  # RFC 9234 section 5: optional transitive
 }
 _MP = (AttrType.MP_REACH_NLRI, AttrType.MP_UNREACH_NLRI)
 _SEGMENT_TYPES = {1, 2, 3, 4}  # AS_SET, AS_SEQUENCE (RFC 4271); AS_CONFED_SEQUENCE, _SET (RFC 5065)
@@ -316,6 +323,16 @@ def _value_fault(attr: RawAttribute, *, four_octet_as: bool) -> tuple[Action, st
                 Action.TREAT_AS_WITHDRAW,
                 "EXTENDED COMMUNITIES length is not a non-zero multiple of 8",
             )
+    elif code == AttrType.IPV6_ADDRESS_SPECIFIC_EXTENDED_COMMUNITY:
+        if n == 0 or n % 20:
+            return (
+                Action.TREAT_AS_WITHDRAW,
+                "IPv6 EXTENDED COMMUNITIES length is not a non-zero multiple of 20"
+                " (RFC 7606 section 7.15)",
+            )
+    elif code == AttrType.OTC:
+        if n != 4:
+            return Action.TREAT_AS_WITHDRAW, "OTC length is not 4 (RFC 9234 section 5)"
     elif code == AttrType.MP_REACH_NLRI:
         if n < 5:
             return Action.AFI_SAFI_DISABLE, "MP_REACH_NLRI is shorter than 5 octets"
@@ -493,6 +510,8 @@ class Attributes:
     large_communities: tuple[LargeCommunity, ...] = ()
     originator_id: ipaddress.IPv4Address | None = None
     cluster_list: tuple[ipaddress.IPv4Address, ...] = ()
+    ipv6_extended_communities: tuple[Ipv6ExtendedCommunity, ...] = ()
+    otc: int | None = None
     mp_reach: MpReach | None = None
     mp_unreach: MpUnreach | None = None
     unknown: tuple[RawAttribute, ...] = ()
@@ -593,6 +612,10 @@ def _decode_one(
         fields.setdefault(
             "cluster_list", tuple(_address(value[i : i + 4]) for i in range(0, len(value), 4))
         )
+    elif code == AttrType.IPV6_ADDRESS_SPECIFIC_EXTENDED_COMMUNITY:
+        fields.setdefault("ipv6_extended_communities", decode_ipv6_extended(value))
+    elif code == AttrType.OTC:
+        fields.setdefault("otc", _u32(value, "OTC"))
     elif code == AttrType.MP_REACH_NLRI:
         fields.setdefault("mp_reach", parse_mp_reach(value, add_path))
     elif code == AttrType.MP_UNREACH_NLRI:
@@ -624,8 +647,9 @@ def decode_attributes(
     ``attributes`` are the :class:`RawAttribute` records of ``walk`` or ``Update.attributes``;
     ``walk`` frames and judges, this reads values. ORIGIN, AS_PATH, AS4_PATH, NEXT_HOP,
     MULTI_EXIT_DISC, LOCAL_PREF, ATOMIC_AGGREGATE, AGGREGATOR, AS4_AGGREGATOR (RFC 4271, RFC
-    6793), COMMUNITIES (RFC 1997), EXTENDED COMMUNITIES (RFC 4360), LARGE_COMMUNITY (RFC 8092),
-    ORIGINATOR_ID and CLUSTER_LIST (RFC 4456), MP_REACH_NLRI and MP_UNREACH_NLRI (RFC 4760) are
+    6793), COMMUNITIES (RFC 1997), EXTENDED COMMUNITIES (RFC 4360), IPv6 Address Specific
+    EXTENDED COMMUNITIES (type 25, RFC 5701), LARGE_COMMUNITY (RFC 8092), ORIGINATOR_ID and
+    CLUSTER_LIST (RFC 4456), OTC (RFC 9234), MP_REACH_NLRI and MP_UNREACH_NLRI (RFC 4760) are
     decoded; every other attribute is returned untouched in ``unknown``.
 
     ``four_octet_as`` is the AS number width of AS_PATH and AGGREGATOR (RFC 6793 section 4.1);

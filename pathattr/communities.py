@@ -32,9 +32,11 @@ __all__ = [
     "WELL_KNOWN",
     "Community",
     "ExtendedCommunity",
+    "Ipv6ExtendedCommunity",
     "LargeCommunity",
     "decode_communities",
     "decode_extended",
+    "decode_ipv6_extended",
     "decode_large_communities",
 ]
 
@@ -211,3 +213,67 @@ def decode_extended(raw: bytes) -> tuple[ExtendedCommunity, ...]:
     if not raw or len(raw) % 8:
         raise ValueError("EXTENDED COMMUNITIES length is not a non-zero multiple of 8 (RFC 7606)")
     return tuple(ExtendedCommunity(bytes(raw[i : i + 8])) for i in range(0, len(raw), 8))
+
+
+@dataclass(frozen=True, slots=True)
+class Ipv6ExtendedCommunity:
+    """A 20-octet IPv6 Address Specific extended community, kept whole (RFC 5701 section 2).
+
+    Octet 0 is 0x00 (transitive) or 0x40 (non-transitive), octet 1 the sub-type, octets 2 to 17
+    the Global Administrator (an IPv6 address) and octets 18 and 19 the Local Administrator. The
+    sub-types are those of the IPv4 Address Specific family; RFC 5701 section 3 assigns 0x0002
+    Route Target and 0x0003 Route Origin. Any other type or sub-type is kept, not an error
+    (RFC 7606 section 7.15).
+    """
+
+    raw: bytes
+
+    def __post_init__(self) -> None:
+        if len(self.raw) != 20:
+            raise ValueError("an IPv6 address specific extended community is exactly 20 octets")
+
+    @property
+    def type_high(self) -> int:
+        return self.raw[0]
+
+    @property
+    def subtype(self) -> int:
+        return self.raw[1]
+
+    @property
+    def transitive(self) -> bool:
+        """True for type octet 0x00; the 0x40 bit marks non-transitive (RFC 5701 section 2)."""
+        return not self.raw[0] & 0x40
+
+    @property
+    def global_administrator(self) -> ipaddress.IPv6Address:
+        return ipaddress.IPv6Address(self.raw[2:18])
+
+    @property
+    def local_administrator(self) -> int:
+        return int.from_bytes(self.raw[18:20], "big")
+
+    @property
+    def subtype_name(self) -> str | None:
+        """Route Target or Route Origin for the two assigned types (0x00 or 0x40 high octet)."""
+        if self.raw[0] & 0xBF:
+            return None
+        return _SUBTYPES.get(self.raw[1])
+
+    def __str__(self) -> str:
+        name = self.subtype_name
+        if name is not None:
+            label = "rt" if name == "Route Target" else "ro"
+            return f"{label}:{self.global_administrator}:{self.local_administrator}"
+        return "0x" + self.raw.hex()
+
+
+def decode_ipv6_extended(raw: bytes) -> tuple[Ipv6ExtendedCommunity, ...]:
+    """Decode an IPv6 ADDRESS SPECIFIC EXTENDED COMMUNITY value (RFC 5701 section 2).
+
+    Multiples of twenty octets, every one returned whole. Raises ``ValueError`` for a length that
+    is not a non-zero multiple of 20, which RFC 7606 section 7.15 makes treat-as-withdraw.
+    """
+    if not raw or len(raw) % 20:
+        raise ValueError("IPv6 EXTENDED COMMUNITIES length is not a non-zero multiple of 20")
+    return tuple(Ipv6ExtendedCommunity(bytes(raw[i : i + 20])) for i in range(0, len(raw), 20))
