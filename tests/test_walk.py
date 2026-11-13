@@ -112,11 +112,13 @@ def test_walk_mp_flags_conflict_is_afi_safi_disable():
 
 
 def test_walk_aggregator_bad_length_is_discard():
-    six = attr(0xC0, 7, bytes(6))
+    # AS 0 is a different fault (RFC 7607), so the well-formed ones name AS 1.
+    six = attr(0xC0, 7, b"\x00\x01" + bytes(4))
     assert walk(six, four_octet_as=False, internal=False).action is Action.NONE
     assert walk(six, four_octet_as=True, internal=False).action is Action.ATTRIBUTE_DISCARD
-    assert walk(attr(0xC0, 7, bytes(8)), **KW).action is Action.NONE
-    eight = walk(attr(0xC0, 7, bytes(8)), four_octet_as=False, internal=False)
+    eight_ok = attr(0xC0, 7, b"\x00\x00\x00\x01" + bytes(4))
+    assert walk(eight_ok, **KW).action is Action.NONE
+    eight = walk(eight_ok, four_octet_as=False, internal=False)
     assert eight.action is Action.ATTRIBUTE_DISCARD
 
 

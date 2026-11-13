@@ -15,14 +15,40 @@ kept, never judged.
 
 from __future__ import annotations
 
+import ipaddress
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import Any
+
+from .aspath import (
+    AS_TRANS,
+    AsPath,
+    contains_as0,
+    merge_as4_path,
+    parse_as_path,
+    strip_confed,
+)
+from .communities import (
+    Community,
+    ExtendedCommunity,
+    LargeCommunity,
+    decode_communities,
+    decode_extended,
+    decode_large_communities,
+)
+from .errors import BgpError
+from .nlri import MpReach, MpUnreach, parse_mp_reach, parse_mp_unreach
 
 __all__ = [
     "Action",
+    "Aggregator",
     "AttrType",
+    "Attributes",
     "Issue",
+    "Origin",
     "RawAttribute",
+    "Undecodable",
     "Walked",
     "decode_attributes",
     "missing_mandatory",
@@ -54,6 +80,7 @@ class AttrType(IntEnum):
     EXTENDED_COMMUNITIES = 16  # RFC 4360 section 2
     AS4_PATH = 17  # RFC 6793 section 3
     AS4_AGGREGATOR = 18
+    LARGE_COMMUNITY = 32  # RFC 8092 section 3
 
 
 class Action(IntEnum):
@@ -85,6 +112,7 @@ _FLAGS: dict[int, tuple[bool, bool]] = {
     AttrType.MP_REACH_NLRI: (True, False),
     AttrType.MP_UNREACH_NLRI: (True, False),
     AttrType.EXTENDED_COMMUNITIES: (True, True),
+    AttrType.LARGE_COMMUNITY: (True, True),
 }
 _MP = (AttrType.MP_REACH_NLRI, AttrType.MP_UNREACH_NLRI)
 _SEGMENT_TYPES = {1, 2, 3, 4}  # AS_SET, AS_SEQUENCE (RFC 4271); AS_CONFED_SEQUENCE, _SET (RFC 5065)
@@ -208,6 +236,33 @@ def _as_path_fault(value: bytes, asn_size: int) -> str | None:
     return None
 
 
+def _as4_path_fault(attr: RawAttribute, four_octet_as: bool) -> tuple[Action, str] | None:
+    """RFC 6793 sections 4.1 and 6 and RFC 7607 section 2 for AS4_PATH: always attribute discard."""
+    if four_octet_as:
+        return Action.ATTRIBUTE_DISCARD, "AS4_PATH between 4-octet speakers (RFC 6793 section 4.1)"
+    if len(attr.value) < 6:
+        return Action.ATTRIBUTE_DISCARD, "AS4_PATH is too small to carry an AS number"
+    fault = _as_path_fault(attr.value, 4)
+    if fault:
+        return Action.ATTRIBUTE_DISCARD, "AS4_PATH " + fault
+    if contains_as0(parse_as_path(attr.value, True)):
+        return Action.ATTRIBUTE_DISCARD, "AS4_PATH contains AS 0 (RFC 7607 section 2)"
+    return None
+
+
+def _as4_aggregator_fault(attr: RawAttribute, four_octet_as: bool) -> tuple[Action, str] | None:
+    if four_octet_as:
+        return (
+            Action.ATTRIBUTE_DISCARD,
+            "AS4_AGGREGATOR between 4-octet speakers (RFC 6793 section 4.1)",
+        )
+    if len(attr.value) != 8:
+        return Action.ATTRIBUTE_DISCARD, "AS4_AGGREGATOR length is not 8"
+    if int.from_bytes(attr.value[:4], "big") == 0:
+        return Action.ATTRIBUTE_DISCARD, "AS4_AGGREGATOR names AS 0 (RFC 7607 section 2)"
+    return None
+
+
 def _value_fault(attr: RawAttribute, *, four_octet_as: bool) -> tuple[Action, str] | None:
     """Apply RFC 7606 section 7 to one attribute; None when it is well formed or not judged."""
     code, n = attr.type_code, len(attr.value)
@@ -220,6 +275,12 @@ def _value_fault(attr: RawAttribute, *, four_octet_as: bool) -> tuple[Action, st
         fault = _as_path_fault(attr.value, 4 if four_octet_as else 2)
         if fault:
             return Action.TREAT_AS_WITHDRAW, "AS_PATH " + fault
+        if contains_as0(parse_as_path(attr.value, four_octet_as)):
+            return Action.TREAT_AS_WITHDRAW, "AS_PATH contains AS 0 (RFC 7607 section 2)"
+    elif code == AttrType.AS4_PATH:
+        return _as4_path_fault(attr, four_octet_as)
+    elif code == AttrType.AS4_AGGREGATOR:
+        return _as4_aggregator_fault(attr, four_octet_as)
     elif code in (
         AttrType.NEXT_HOP,
         AttrType.MULTI_EXIT_DISC,
@@ -235,12 +296,20 @@ def _value_fault(attr: RawAttribute, *, four_octet_as: bool) -> tuple[Action, st
         want = 8 if four_octet_as else 6
         if n != want:
             return Action.ATTRIBUTE_DISCARD, f"AGGREGATOR length is not {want}"
+        if int.from_bytes(attr.value[: want - 4], "big") == 0:
+            return Action.ATTRIBUTE_DISCARD, "AGGREGATOR names AS 0 (RFC 7607 section 2)"
     elif code == AttrType.COMMUNITIES:
         if n == 0 or n % 4:
             return Action.TREAT_AS_WITHDRAW, "COMMUNITIES length is not a non-zero multiple of 4"
     elif code == AttrType.CLUSTER_LIST:
         if n == 0 or n % 4:
             return Action.TREAT_AS_WITHDRAW, "CLUSTER_LIST length is not a non-zero multiple of 4"
+    elif code == AttrType.LARGE_COMMUNITY:
+        if n == 0 or n % 12:
+            return (
+                Action.TREAT_AS_WITHDRAW,
+                "LARGE_COMMUNITY length is not a non-zero multiple of 12 (RFC 8092 section 6)",
+            )
     elif code == AttrType.EXTENDED_COMMUNITIES:
         if n == 0 or n % 8:
             return (
@@ -372,11 +441,212 @@ def missing_mandatory(walked: Walked, *, has_nlri: bool, has_mp_reach: bool) -> 
     )
 
 
-def decode_attributes(raw: bytes) -> list:
-    """Pending behaviour defined by RFC 4271.
+class Origin(IntEnum):
+    """ORIGIN values (RFC 4271 section 5.1.1)."""
 
-    Not implemented yet. See the ``attribute.decode_attributes()`` row in ROADMAP.md;
-    this stub raises on purpose so nothing downstream mistakes it for working code.
-    Per-attribute value decoding is separate from :func:`walk`, which frames and judges only.
+    IGP = 0
+    EGP = 1
+    INCOMPLETE = 2
+
+
+@dataclass(frozen=True, slots=True)
+class Aggregator:
+    """AGGREGATOR or AS4_AGGREGATOR: the AS and the router that formed the aggregate."""
+
+    asn: int
+    address: ipaddress.IPv4Address
+
+
+@dataclass(frozen=True, slots=True)
+class Undecodable:
+    """An attribute whose value could not be decoded, and what RFC 7606 says to do about it.
+
+    Never dropped: the framed attribute is kept so the caller can log or forward it.
     """
-    raise NotImplementedError("decode_attributes() is not implemented: RFC 4271")
+
+    attribute: RawAttribute
+    action: Action
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class Attributes:
+    """Decoded path attribute values. A field is None (or empty) when the attribute is absent.
+
+    ``unknown`` holds every attribute this module does not decode (a type with no decoder here, or
+    unassigned), raw and in order. ``undecodable`` holds those it tried and could not decode.
+    ``four_octet_as`` records the AS number width the AS_PATH and AGGREGATOR were read with.
+    """
+
+    four_octet_as: bool = True
+    origin: Origin | None = None
+    as_path: AsPath | None = None
+    as4_path: AsPath | None = None
+    next_hop: ipaddress.IPv4Address | None = None
+    med: int | None = None
+    local_pref: int | None = None
+    atomic_aggregate: bool = False
+    aggregator: Aggregator | None = None
+    as4_aggregator: Aggregator | None = None
+    communities: tuple[Community, ...] = ()
+    extended_communities: tuple[ExtendedCommunity, ...] = ()
+    large_communities: tuple[LargeCommunity, ...] = ()
+    originator_id: ipaddress.IPv4Address | None = None
+    cluster_list: tuple[ipaddress.IPv4Address, ...] = ()
+    mp_reach: MpReach | None = None
+    mp_unreach: MpUnreach | None = None
+    unknown: tuple[RawAttribute, ...] = ()
+    undecodable: tuple[Undecodable, ...] = ()
+
+    @property
+    def effective_as_path(self) -> AsPath | None:
+        """The AS path to use for policy: AS_PATH, rebuilt with AS4_PATH when the session is 2-octet.
+
+        Between 4-octet speakers AS_PATH is complete and AS4_PATH must not be present (RFC 6793
+        section 4.1); otherwise the two are merged by RFC 6793 section 4.2.3. ``None`` when there
+        is no AS_PATH.
+        """
+        if self.as_path is None:
+            return None
+        if self.four_octet_as or self.as4_path is None:
+            return self.as_path
+        return merge_as4_path(self.as_path, self.as4_path)
+
+    @property
+    def effective_aggregator(self) -> Aggregator | None:
+        """AGGREGATOR, replaced by AS4_AGGREGATOR when the former holds AS_TRANS (RFC 6793 4.2.3)."""
+        if (
+            not self.four_octet_as
+            and self.aggregator is not None
+            and self.aggregator.asn == AS_TRANS
+            and self.as4_aggregator is not None
+        ):
+            return self.as4_aggregator
+        return self.aggregator
+
+
+def _address(value: bytes) -> ipaddress.IPv4Address:
+    return ipaddress.IPv4Address(bytes(value))
+
+
+def _aggregator(value: bytes, width: int, name: str) -> Aggregator:
+    if len(value) != width + 4:
+        raise ValueError(f"{name} length is not {width + 4}")
+    return Aggregator(int.from_bytes(value[:width], "big"), _address(value[width:]))
+
+
+def _u32(value: bytes, name: str) -> int:
+    if len(value) != 4:
+        raise ValueError(f"{name} length is not 4")
+    return int.from_bytes(value, "big")
+
+
+def _decode_one(
+    attr: RawAttribute,
+    fields: dict[str, Any],
+    four_octet_as: bool,
+    add_path: frozenset[tuple[int, int]],
+) -> bool:
+    """Decode one attribute into ``fields``; False when the type has no decoder here.
+
+    Raises ``ValueError`` (or ``BgpError`` for a malformed AS_PATH) when the value is malformed. A
+    repeated attribute keeps the first occurrence.
+    """
+    code, value = attr.type_code, attr.value
+    if code == AttrType.ORIGIN:
+        if len(value) != 1 or value[0] > 2:
+            raise ValueError("ORIGIN is not one octet 0, 1 or 2")
+        fields.setdefault("origin", Origin(value[0]))
+    elif code == AttrType.AS_PATH:
+        fields.setdefault("as_path", parse_as_path(value, four_octet_as))
+    elif code == AttrType.AS4_PATH:
+        fields.setdefault("as4_path", strip_confed(parse_as_path(value, True)))
+    elif code == AttrType.NEXT_HOP:
+        if len(value) != 4:
+            raise ValueError("NEXT_HOP length is not 4")
+        fields.setdefault("next_hop", _address(value))
+    elif code == AttrType.MULTI_EXIT_DISC:
+        fields.setdefault("med", _u32(value, "MULTI_EXIT_DISC"))
+    elif code == AttrType.LOCAL_PREF:
+        fields.setdefault("local_pref", _u32(value, "LOCAL_PREF"))
+    elif code == AttrType.ATOMIC_AGGREGATE:
+        if value:
+            raise ValueError("ATOMIC_AGGREGATE length is not 0")
+        fields["atomic_aggregate"] = True
+    elif code == AttrType.AGGREGATOR:
+        fields.setdefault("aggregator", _aggregator(value, 4 if four_octet_as else 2, "AGGREGATOR"))
+    elif code == AttrType.AS4_AGGREGATOR:
+        fields.setdefault("as4_aggregator", _aggregator(value, 4, "AS4_AGGREGATOR"))
+    elif code == AttrType.COMMUNITIES:
+        fields.setdefault("communities", decode_communities(value))
+    elif code == AttrType.EXTENDED_COMMUNITIES:
+        fields.setdefault("extended_communities", decode_extended(value))
+    elif code == AttrType.LARGE_COMMUNITY:
+        fields.setdefault("large_communities", decode_large_communities(value))
+    elif code == AttrType.ORIGINATOR_ID:
+        if len(value) != 4:
+            raise ValueError("ORIGINATOR_ID length is not 4")
+        fields.setdefault("originator_id", _address(value))
+    elif code == AttrType.CLUSTER_LIST:
+        if not value or len(value) % 4:
+            raise ValueError("CLUSTER_LIST length is not a non-zero multiple of 4")
+        fields.setdefault(
+            "cluster_list", tuple(_address(value[i : i + 4]) for i in range(0, len(value), 4))
+        )
+    elif code == AttrType.MP_REACH_NLRI:
+        fields.setdefault("mp_reach", parse_mp_reach(value, add_path))
+    elif code == AttrType.MP_UNREACH_NLRI:
+        fields.setdefault("mp_unreach", parse_mp_unreach(value, add_path))
+    else:
+        return False
+    return True
+
+
+# RFC 7606 section 7 and the defining documents: what a malformed value of each attribute costs.
+_FAULT_ACTION: dict[int, Action] = {
+    AttrType.ATOMIC_AGGREGATE: Action.ATTRIBUTE_DISCARD,
+    AttrType.AGGREGATOR: Action.ATTRIBUTE_DISCARD,
+    AttrType.AS4_PATH: Action.ATTRIBUTE_DISCARD,  # RFC 6793 section 6
+    AttrType.AS4_AGGREGATOR: Action.ATTRIBUTE_DISCARD,  # RFC 6793 section 6
+    AttrType.MP_REACH_NLRI: Action.AFI_SAFI_DISABLE,  # RFC 7606 sections 3 (j) and 7.11
+    AttrType.MP_UNREACH_NLRI: Action.AFI_SAFI_DISABLE,
+}
+
+
+def decode_attributes(
+    attributes: Iterable[RawAttribute],
+    *,
+    four_octet_as: bool = True,
+    add_path: frozenset[tuple[int, int]] = frozenset(),
+) -> Attributes:
+    """Decode the values of framed path attributes (RFC 4271 section 5 and the per-attribute RFCs).
+
+    ``attributes`` are the :class:`RawAttribute` records of ``walk`` or ``Update.attributes``;
+    ``walk`` frames and judges, this reads values. ORIGIN, AS_PATH, AS4_PATH, NEXT_HOP,
+    MULTI_EXIT_DISC, LOCAL_PREF, ATOMIC_AGGREGATE, AGGREGATOR, AS4_AGGREGATOR (RFC 4271, RFC
+    6793), COMMUNITIES (RFC 1997), EXTENDED COMMUNITIES (RFC 4360), LARGE_COMMUNITY (RFC 8092),
+    ORIGINATOR_ID and CLUSTER_LIST (RFC 4456), MP_REACH_NLRI and MP_UNREACH_NLRI (RFC 4760) are
+    decoded; every other attribute is returned untouched in ``unknown``.
+
+    ``four_octet_as`` is the AS number width of AS_PATH and AGGREGATOR (RFC 6793 section 4.1);
+    ``add_path`` lists the <AFI, SAFI> pairs whose NLRI carries Path Identifiers (RFC 7911, see
+    :func:`pathattr.addpath.receive_families`). Never raises for a bad value: the attribute goes to
+    ``undecodable`` with the RFC 7606 approach its fault calls for, and a repeated attribute
+    contributes only its first occurrence (RFC 7606 section 3 (g)).
+    """
+    fields: dict[str, Any] = {}
+    unknown: list[RawAttribute] = []
+    undecodable: list[Undecodable] = []
+    for attr in attributes:
+        try:
+            if not _decode_one(attr, fields, four_octet_as, add_path):
+                unknown.append(attr)
+        except (ValueError, BgpError) as error:
+            action = _FAULT_ACTION.get(attr.type_code, Action.TREAT_AS_WITHDRAW)
+            undecodable.append(Undecodable(attr, action, str(error)))
+    return Attributes(
+        four_octet_as=four_octet_as,
+        unknown=tuple(unknown),
+        undecodable=tuple(undecodable),
+        **fields,
+    )

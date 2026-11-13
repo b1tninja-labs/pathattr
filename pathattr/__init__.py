@@ -16,11 +16,16 @@ from . import (
     limits,
     message,
     nlri,
+    registry,
     roles,
 )
 from .aspath import parse_as_path
 from .attribute import Action, Issue, RawAttribute, Walked, decode_attributes, walk
-from .communities import decode_communities, decode_extended
+from .communities import (
+    decode_communities,
+    decode_extended,
+    decode_large_communities,
+)
 from .errors import BgpError
 from .limits import check
 from .message import (
@@ -61,6 +66,7 @@ __all__ = [
     "decode_communities",
     "decode_extended",
     "decode_header",
+    "decode_large_communities",
     "decode_stream",
     "encode",
     "encode_prefix_list",
@@ -72,6 +78,7 @@ __all__ = [
     "parse_nlri",
     "parse_prefix_list",
     "peer_role",
+    "registry",
     "roles",
     "walk",
 ]

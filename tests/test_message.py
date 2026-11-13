@@ -140,7 +140,7 @@ def test_open_and_update_below_their_minimum_raise_bad_length():
     assert other.value.subcode == 2
 
 
-@pytest.mark.parametrize("kind", [0, 5, 255])
+@pytest.mark.parametrize("kind", [0, 6, 255])
 def test_decode_unknown_type_raises_subcode_3_with_type_in_data(kind):
     raw = MARKER + h("0013") + bytes([kind])
     with pytest.raises(BgpError) as caught:

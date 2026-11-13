@@ -17,6 +17,7 @@ __all__ = [
     "ErrorCode",
     "HeaderSubcode",
     "OpenSubcode",
+    "RouteRefreshSubcode",
     "UpdateSubcode",
 ]
 
@@ -30,6 +31,7 @@ class ErrorCode(IntEnum):
     HOLD_TIMER_EXPIRED = 4
     FSM = 5
     CEASE = 6
+    ROUTE_REFRESH = 7  # RFC 7313 section 5
 
 
 class HeaderSubcode(IntEnum):
@@ -66,6 +68,12 @@ class UpdateSubcode(IntEnum):
     OPTIONAL_ATTRIBUTE_ERROR = 9
     INVALID_NETWORK_FIELD = 10
     MALFORMED_AS_PATH = 11
+
+
+class RouteRefreshSubcode(IntEnum):
+    """ROUTE-REFRESH Message Error subcodes (RFC 7313 section 5)."""
+
+    INVALID_MESSAGE_LENGTH = 1
 
 
 class BgpError(Exception):
